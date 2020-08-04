@@ -3,6 +3,10 @@ from getpass import getpass
 import requests
 import time
 import json
+import copy
+import collections.abc
+
+MASKED_KEYS = ['password']
 
 
 def sso_inputs():
@@ -138,7 +142,6 @@ also refer Admin Guide for instructions)\n\n''')
     parser.add_argument('--witness-vsan-cidr', help='Witness Host vsan cidr')
 
     args = parser.parse_args()
-
     if args.workflow == 'prepare-stretch' and args.sc_domain and args.sc_cluster:
         sso_username, sso_password = sso_inputs()
         print()
@@ -168,6 +171,8 @@ also refer Admin Guide for instructions)\n\n''')
 def prepare_stretch(cluster_id, username, password):
     prepare_stretch_api = 'http://localhost/v1/clusters/' + cluster_id
     prepare_stretch_spec = {"prepareForStretch": True}
+    print('Payload ', end='\n\n')
+    print(json.dumps(prepare_stretch_spec, indent=2))
     response = patch_request(payload=prepare_stretch_spec, url=prepare_stretch_api, username=username,
                              password=password)
     print(response, end='\n\n')
@@ -194,6 +199,10 @@ def stretch_vsan_cluster(username, password, cluster_id, hosts_list, vsan_spec, 
         stretch_validation_spec['vsanNetworkSpecs'].append(vsan_dict)
 
     payload = {"clusterStretchSpec": stretch_validation_spec}
+    payload_copy = copy.deepcopy(payload)
+    maskPasswords(payload_copy)
+    print('Payload :')
+    print(json.dumps(payload_copy, indent=2))
     execute_workflow(payload, username, password, cluster_id, 'vSAN stretch cluster')
 
 
@@ -202,7 +211,8 @@ def execute_workflow(payload, username, password, cluster_id, workflow_name):
     validation_url = url + cluster_id + '/validations'
     print('validation_url : ' + validation_url, end='\n\n')
     response = post_request(payload, validation_url, username, password)
-    print('Validation started for ' + workflow_name + ' workflow. Validation response id : ' + response['id'], end='\n\n')
+    print('Validation started for ' + workflow_name + ' workflow. Validation response id : ' + response['id'],
+          end='\n\n')
 
     stretch_validation_poll_url = url + 'validations/' + response['id']
     print('stretch_validation_poll_url : ' + stretch_validation_poll_url, end='\n\n')
@@ -236,6 +246,10 @@ def expand_stretch_cluster(username, password, cluster_id, hosts_list, vsan_spec
         stretch_expansion_spec['vsanNetworkSpecs'].append(vsan_dict)
 
     payload = {"clusterExpansionSpec": stretch_expansion_spec}
+    payload_copy = copy.deepcopy(payload)
+    maskPasswords(payload_copy)
+    print('Payload :')
+    print(json.dumps(payload_copy, indent=2))
     execute_workflow(payload, username, password, cluster_id, 'expand stretch cluster')
 
 
@@ -263,7 +277,6 @@ def get_request(url, username, password):
     else:
         print("Error reaching the server.")
         exit(1)
-    print(data, end='\n\n')
     return data
 
 
@@ -292,19 +305,46 @@ def patch_request(payload, url, username, password):
 
 
 def get_poll_request(url, username, password):
-    status = get_request(url, username, password)['executionStatus']
-    print(status, end='\n\n')
-    while status in ['In Progress', 'IN_PROGRESS', 'Pending']:
-        print('IN_PROGRESS', end='\n\n')
+    response = get_request(url, username, password)
+    while response['executionStatus'] in ['In Progress', 'IN_PROGRESS', 'Pending']:
+        print('Validation is in progress...', end='\n\n')
         time.sleep(10)
         response = get_request(url, username, password)
-        status = response['executionStatus']
 
-    if status == 'COMPLETED' and response['resultStatus'] == 'SUCCEEDED':
+    print('Validation ended with status %s' % response['resultStatus'])
+    if response['executionStatus'] == 'COMPLETED' and response['resultStatus'] == 'SUCCEEDED':
         return
     else:
         print('Validation failed')
+        print_response(response)
         exit(1)
+
+
+def print_response(response):
+    for s in response['validationChecks']:
+        if s['resultStatus'] == 'FAILED':
+            if 'description' and 'errorResponse' in s:
+                if 'errorCode' in s['errorResponse']:
+                    print('Validation is failed in task : "%s" with ErrorCode : "%s"' % (s['description'], s['errorResponse']['errorCode']))
+            if 'description' in s and 'errorResponse' not in s:
+                print('Validation is failed in task : "%s"' % s['description'])
+            if 'errorResponse' in s:
+                if 'message' in s['errorResponse']:
+                    print('message : %s' % s['errorResponse']['message'])
+
+
+def maskPasswords(obj):
+    for k, v in obj.items():
+        if isinstance(v, collections.abc.Mapping):
+            obj[k] = maskPasswords(v)
+        elif isinstance(v, list):
+            for elem in v:
+                maskPasswords(elem)
+        elif k in MASKED_KEYS:
+            obj[k] = '*******'
+        else:
+            obj[k] = v
+    return obj
 
 
 if __name__ == "__main__":
