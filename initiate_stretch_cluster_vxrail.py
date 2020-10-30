@@ -7,28 +7,38 @@ import copy
 import collections.abc
 
 MASKED_KEYS = ['password']
+ESXI_TYPE = 'ESXi'
 
 
 def sso_inputs():
-    sso_username = input("Please enter SSO username : ")
-    sso_password = getpass("Please provide SSO password : ")
-    sso_confirm_password = getpass("Please confirm SSO password : ")
+    print()
+    sso_username = input("\033[95m Please enter SSO username : \033[00m")
+    print()
+    sso_password = getpass("\033[95m Please provide SSO password : \033[00m")
+    print()
+    sso_confirm_password = getpass("\033[95m Please confirm SSO password : \033[00m")
+    print()
     if not sso_username or not sso_password or not sso_confirm_password:
-        print('Please provide sso usename and password. Input field cannot be empty')
+        print('\033[91m Please provide sso usename and password. Input field cannot be empty \033[00m')
         exit(1)
     if sso_password != sso_confirm_password:
-        print('SSO password mismatch. Please enter correct password')
+        print('\033[91m SSO password mismatch. Please enter correct password \033[00m')
         exit(1)
     return sso_username, sso_password
 
 
-def get_cluster_id(input_domain_name, input_cluster_name, sso_username, sso_password):
+def get_domain_and_cluster_id(input_domain_name, input_cluster_name, sso_username, sso_password):
     domains_json = get_request('http://localhost/v1/domains', sso_username, sso_password)
+
+    domain_id = None
+    for domain in domains_json['elements']:
+        if domain['name'] == input_domain_name:
+            domain_id = domain['id']
 
     clusters_in_domain = [domain['clusters'] for domain in domains_json['elements'] if
                           domain['name'] == input_domain_name]
     if not clusters_in_domain:
-        print('Incorrect domain name Provided. Please provide correct domain name')
+        print('\033[91m Incorrect domain name Provided. Please provide correct domain name \033[00m')
         exit(1)
     clusters_in_domain_ids = [cluster['id'] for cluster in clusters_in_domain[0]]
 
@@ -36,29 +46,33 @@ def get_cluster_id(input_domain_name, input_cluster_name, sso_username, sso_pass
     cluster_ids = [cluster['id'] for cluster in clusters_json['elements'] if cluster['name'] == input_cluster_name and
                    cluster['id'] in clusters_in_domain_ids]
     if not cluster_ids:
-        print('Incorrect cluster name Provided. Please provide correct cluster name')
+        print('\033[91m Incorrect cluster name Provided. Please provide correct cluster name \033[00m')
         exit(1)
-    return cluster_ids[0]
+    return domain_id, cluster_ids[0]
 
 
 def host_inputs(input_hosts_fqdn, workflow_option):
     hosts_fqdn = [x.strip() for x in input_hosts_fqdn.split(',')]
     hosts_list = []
     for host_fqdn in hosts_fqdn:
-        host_password = getpass('Please provide root user password for host %s : ' % host_fqdn)
-        host_confirm_password = getpass('Please confirm root user password for host %s : ' % host_fqdn)
+        host_password = getpass('\033[95m Please provide root user password for host %s : \033[00m' % host_fqdn)
+        print()
+        host_confirm_password = getpass('\033[95m Please confirm root user password for host %s : \033[00m' % host_fqdn)
+        print()
         if not host_password or not host_confirm_password:
-            print('Please provide host password. Input field cannot be empty')
+            print('\033[91m Please provide host password. Input field cannot be empty \033[00m')
             exit(1)
         if host_password != host_confirm_password:
-            print('For host %s, provided password and confirm password is not matching' % host_fqdn)
+            print('\033[91m For host %s, provided password and confirm password is not matching \033[00m' % host_fqdn)
             exit(1)
         if workflow_option == 'stretch-vsan':
             hosts_list.append([host_fqdn, host_password])
         elif workflow_option == 'expand-stretch-cluster':
-            host_fault_domain = input('Please provide fault domain for host %s : ' % host_fqdn)
+            host_fault_domain = input('\033[95m Please provide fault domain for host %s : \033[00m' % host_fqdn)
+            print()
             if not host_fault_domain:
-                print('Please provide host fault domain for host ' + host_fqdn + '. Input field cannot be empty')
+                print('\033[91m Please provide host fault domain for host ' + host_fqdn +
+                      '. Input field cannot be empty \033[00m')
                 exit(1)
             hosts_list.append([host_fqdn, host_password, host_fault_domain])
     return hosts_list
@@ -66,17 +80,23 @@ def host_inputs(input_hosts_fqdn, workflow_option):
 
 def vsan_inputs():
     vsan_spec = []
-    vsan_gateway_ip_az1 = input('For preferred site: Please enter vSAN Gateway IP (ex: 172.18.93.1) : ')
-    vsan_cidr_az1 = input('For preferred site: Please enter vSAN CIDR (ex: 172.18.93.0/24) : ')
+    vsan_gateway_ip_az1 = input('\033[95m For preferred site: Please enter vSAN Gateway IP (ex: 172.18.93.1) : \033[00m')
+    print()
+    vsan_cidr_az1 = input('\033[95m For preferred site: Please enter vSAN CIDR (ex: 172.18.93.0/24) : \033[00m')
+    print()
     if not vsan_gateway_ip_az1 or not vsan_cidr_az1:
-        print('Please provide vSAN gateway ip and vSAN CIDR for preferred site. Input field cannot be empty')
+        print('\033[91m Please provide vSAN gateway ip and vSAN CIDR for preferred site. '
+              'Input field cannot be empty \033[00m')
         exit(1)
     vsan_spec.append([vsan_gateway_ip_az1, vsan_cidr_az1])
-    vsan_gateway_ip_az2 = input('For non-preferred site: Please enter vSAN Gateway IP (ex: 172.18.93.1) : ')
-    vsan_cidr_az2 = input('For non-preferred site: Please enter vSAN CIDR (ex: 172.18.93.0/24) : ')
+    vsan_gateway_ip_az2 = input('\033[95m For non-preferred site: Please enter vSAN Gateway IP (ex: 172.18.93.1) : '
+                                '\033[00m')
+    print()
+    vsan_cidr_az2 = input('\033[95m For non-preferred site: Please enter vSAN CIDR (ex: 172.18.93.0/24) : \033[00m')
+    print()
     if not vsan_gateway_ip_az2 or not vsan_cidr_az2:
-        print('Please provide vSAN gateway ip and vSAN CIDR for non-preferred site. Input field cannot be '
-              'empty')
+        print('\033[91m Please provide vSAN gateway ip and vSAN CIDR for non-preferred site. Input field cannot be '
+              'empty \033[00m')
         exit(1)
     vsan_spec.append([vsan_gateway_ip_az2, vsan_cidr_az2])
     return vsan_spec
@@ -144,42 +164,43 @@ also refer Admin Guide for instructions)\n\n''')
     args = parser.parse_args()
     if args.workflow == 'prepare-stretch' and args.sc_domain and args.sc_cluster:
         sso_username, sso_password = sso_inputs()
-        print()
-        cluster_id = get_cluster_id(args.sc_domain, args.sc_cluster, sso_username, sso_password)
+        domain_id, cluster_id = get_domain_and_cluster_id(args.sc_domain, args.sc_cluster, sso_username, sso_password)
         prepare_stretch(cluster_id, sso_username, sso_password)
     elif args.workflow == 'stretch-vsan' and args.sc_domain and args.sc_cluster and args.sc_hosts and args.witness_host_fqdn \
             and args.witness_vsan_ip and args.witness_vsan_cidr:
         sso_username, sso_password, hosts_list, vsan_spec = get_inputs(args.sc_hosts, args.workflow)
-        overlay_vlan_id = input('Please enter non-preferred site overlay vlan id : ')
+        overlay_vlan_id = input('\033[95m Please enter non-preferred site overlay vlan id : \033[00m')
         if not overlay_vlan_id:
-            print('Please provide non-preferred site overlay vlan id. Input field cannot be empty')
+            print('\033[91m Please provide non-preferred site overlay vlan id. Input field cannot be empty \033[00m')
         print()
-        cluster_id = get_cluster_id(args.sc_domain, args.sc_cluster, sso_username, sso_password)
-        stretch_vsan_cluster(sso_username, sso_password, cluster_id, hosts_list, vsan_spec, args.witness_host_fqdn,
+        domain_id, cluster_id = get_domain_and_cluster_id(args.sc_domain, args.sc_cluster, sso_username, sso_password)
+        stretch_vsan_cluster(sso_username, sso_password, domain_id, cluster_id, hosts_list, vsan_spec,
+                             args.witness_host_fqdn,
                              args.witness_vsan_ip, args.witness_vsan_cidr, overlay_vlan_id)
     elif args.workflow == 'expand-stretch-cluster' and args.sc_domain and args.sc_cluster and args.sc_hosts and args.witness_host_fqdn \
             and args.witness_vsan_ip and args.witness_vsan_cidr:
         sso_username, sso_password, hosts_list, vsan_spec = get_inputs(args.sc_hosts, args.workflow)
         print()
-        cluster_id = get_cluster_id(args.sc_domain, args.sc_cluster, sso_username, sso_password)
-        expand_stretch_cluster(sso_username, sso_password, cluster_id, hosts_list, vsan_spec, args.witness_host_fqdn,
+        domain_id, cluster_id = get_domain_and_cluster_id(args.sc_domain, args.sc_cluster, sso_username, sso_password)
+        expand_stretch_cluster(sso_username, sso_password, domain_id, cluster_id, hosts_list, vsan_spec,
+                               args.witness_host_fqdn,
                                args.witness_vsan_ip, args.witness_vsan_cidr)
     else:
-        print('Please provide required arguments for workflow execution. Use -h option for more details')
+        print('\033[91m Please provide required arguments for workflow execution. Use -h option for more details')
 
 
 def prepare_stretch(cluster_id, username, password):
     prepare_stretch_api = 'http://localhost/v1/clusters/' + cluster_id
     prepare_stretch_spec = {"prepareForStretch": True}
-    print('Payload ', end='\n\n')
-    print(json.dumps(prepare_stretch_spec, indent=2))
+    print(' Payload :')
+    print(json.dumps(prepare_stretch_spec, indent=2), end='\n\n')
     response = patch_request(payload=prepare_stretch_spec, url=prepare_stretch_api, username=username,
                              password=password)
-    print(response, end='\n\n')
-    print('Workflow triggered, please track the task status in SDDC Manager UI')
+    print(' Response : {}'.format(response), end='\n\n')
+    print('\033[92m Workflow triggered, please track the task status in SDDC Manager UI')
 
 
-def stretch_vsan_cluster(username, password, cluster_id, hosts_list, vsan_spec, witness_host_fqdn,
+def stretch_vsan_cluster(username, password, domain_id, cluster_id, hosts_list, vsan_spec, witness_host_fqdn,
                          witness_vsan_ip, witness_vsan_cidr, overlay_vlan_id):
     stretch_validation_spec = {
         "hostSpecs": [],
@@ -191,8 +212,11 @@ def stretch_vsan_cluster(username, password, cluster_id, hosts_list, vsan_spec, 
         "vsanNetworkSpecs": [],
         "secondaryAzOverlayVlanId": overlay_vlan_id
     }
+    fqdn_to_thumbprint_dict = get_ssh_thumbprints(hosts_list, domain_id, username, password)
+
     for h in hosts_list:
-        esxi_id_dict = {'hostName': h[0], "username": "root", 'password': h[1]}
+        esxi_id_dict = {'hostName': h[0], "username": "root", 'password': h[1],
+                        'sshThumbprint': fqdn_to_thumbprint_dict.get(h[0])}
         stretch_validation_spec['hostSpecs'].append(esxi_id_dict)
     for v in vsan_spec:
         vsan_dict = {"vsanGatewayIP": v[0], "vsanCidr": v[1]}
@@ -201,33 +225,72 @@ def stretch_vsan_cluster(username, password, cluster_id, hosts_list, vsan_spec, 
     payload = {"clusterStretchSpec": stretch_validation_spec}
     payload_copy = copy.deepcopy(payload)
     maskPasswords(payload_copy)
-    print('Payload :')
-    print(json.dumps(payload_copy, indent=2))
+    print(' Payload :')
+    print(json.dumps(payload_copy, indent=2), end='\n\n')
     execute_workflow(payload, username, password, cluster_id, 'vSAN stretch cluster')
+
+
+def get_ssh_thumbprints(hosts_list, domain_id, username, password):
+    post_url = 'http://localhost/domainmanager/vxrail/hosts/unmananged/fingerprint'
+    payload = {
+        "sshFingerprints": [],
+        "domainId": domain_id
+    }
+    for host in hosts_list:
+        payload['sshFingerprints'].append({'fqdn': host[0], 'userName': 'root', 'password': host[1], 'type': ESXI_TYPE})
+    print('\033[92m Getting the thumbprints for hosts...\033[00m', end="\n\n")
+    response = post_request(payload, post_url, username, password)
+
+    get_url = 'http://localhost/domainmanager/vxrail/hosts/requests/' + response['id']
+    thumbprints_response = get_poll_request_for_fingerprints(get_url, username, password)
+
+    fqdn_to_thumbprint_dict = {}
+    for thumbprint_response in thumbprints_response['sshFingerprints']:
+        fqdn_to_thumbprint_dict[thumbprint_response['id']] = thumbprint_response['fingerPrint']
+
+    display_and_confirm_ssh_thumbprints(fqdn_to_thumbprint_dict)
+
+    return fqdn_to_thumbprint_dict
+
+
+def display_and_confirm_ssh_thumbprints(fqdn_to_thumbprint_dict):
+    print('\033[95m Please confirm SSH Thumbprint of Hosts :\033[00m')
+    print('\033[36m -----------FQDN--------------------------Fingerprint-----------------------------')
+    print('\033[36m ---------------------------------------------------------------------------------')
+    for fqdn_to_thumbprint in fqdn_to_thumbprint_dict:
+        print('\033[36m {} : {} \033[00m'.format(fqdn_to_thumbprint, fqdn_to_thumbprint_dict[fqdn_to_thumbprint]))
+    selected_option = input("\033[95m Enter your choice ('yes' or 'no') : \033[00m")
+    print('\n\n')
+    if selected_option.lower() == 'no':
+        print('\033[91m Fingerprints are not confirmed so exiting...\033[00m', end="\n\n\n")
+        exit(1)
 
 
 def execute_workflow(payload, username, password, cluster_id, workflow_name):
     url = 'http://localhost/v1/clusters/'
     validation_url = url + cluster_id + '/validations'
-    print('validation_url : ' + validation_url, end='\n\n')
+    print('\033[95m validation_url : \033[0m' + validation_url, end='\n\n')
     response = post_request(payload, validation_url, username, password)
-    print('Validation started for ' + workflow_name + ' workflow. Validation response id : ' + response['id'],
+    print('\033[95m Validation started for {} workflow. Validation response id : \033[0m'.format(workflow_name) + response['id'],
           end='\n\n')
 
     stretch_validation_poll_url = url + 'validations/' + response['id']
-    print('stretch_validation_poll_url : ' + stretch_validation_poll_url, end='\n\n')
+    print('\033[95m stretch_validation_poll_url : \033[0m' + stretch_validation_poll_url, end='\n\n')
     get_poll_request(stretch_validation_poll_url, username, password)
-    print('Validation completed successfully for ' + workflow_name + ' workflow', end='\n\n')
+    print('\033[92m Validation completed successfully for {} workflow \033[0m'.format(workflow_name), end='\n\n')
 
-    print('Triggering ' + workflow_name + ' workflow...', end='\n\n')
+    input("\033[1m Enter to continue ...\033[0m")
+    print()
+
+    print('\033[95m Triggering ' + workflow_name + ' workflow...', end='\n\n')
     execution_url = url + cluster_id
-    print('execution_url : ' + execution_url, end='\n\n')
+    print('\033[95m execution_url : \033[0m' + execution_url, end='\n\n')
     response = patch_request(payload, execution_url, username, password)
     print(response, end='\n\n')
-    print('Workflow triggered, please track the task status in SDDC Manager UI')
+    print('\033[92m Workflow triggered, please track the task status in SDDC Manager UI')
 
 
-def expand_stretch_cluster(username, password, cluster_id, hosts_list, vsan_spec, witness_host_fqdn,
+def expand_stretch_cluster(username, password, domain_id, cluster_id, hosts_list, vsan_spec, witness_host_fqdn,
                            witness_vsan_ip, witness_vsan_cidr):
     stretch_expansion_spec = {
         "hostSpecs": [],
@@ -238,8 +301,12 @@ def expand_stretch_cluster(username, password, cluster_id, hosts_list, vsan_spec
         },
         "vsanNetworkSpecs": []
     }
+
+    fqdn_to_thumbprint_dict = get_ssh_thumbprints(hosts_list, domain_id, username, password)
+
     for h in hosts_list:
-        esxi_id_dict = {'hostName': h[0], "username": "root", 'password': h[1], 'azName': h[2]}
+        esxi_id_dict = {'hostName': h[0], "username": "root", 'password': h[1], 'azName': h[2],
+                        'sshThumbprint': fqdn_to_thumbprint_dict.get(h[0])}
         stretch_expansion_spec['hostSpecs'].append(esxi_id_dict)
     for v in vsan_spec:
         vsan_dict = {"vsanGatewayIP": v[0], "vsanCidr": v[1]}
@@ -249,8 +316,22 @@ def expand_stretch_cluster(username, password, cluster_id, hosts_list, vsan_spec
     payload_copy = copy.deepcopy(payload)
     maskPasswords(payload_copy)
     print('Payload :')
-    print(json.dumps(payload_copy, indent=2))
+    print(json.dumps(payload_copy, indent=2), end='\n\n')
     execute_workflow(payload, username, password, cluster_id, 'expand stretch cluster')
+
+
+def get_poll_request_for_fingerprints(url, username, password):
+    response = get_request(url, username, password)
+    while response['status'] in ['In Progress', 'IN_PROGRESS', 'Pending']:
+        time.sleep(2)
+        response = get_request(url, username, password)
+
+    if response['status'] == 'COMPLETED':
+        return response
+    else:
+        print('\033[91m Failed to get thumbprints \033[00m', end='\n\n')
+        print(' Response : {}'.format(response))
+        exit(1)
 
 
 def get_token(username, password):
@@ -261,7 +342,7 @@ def get_token(username, password):
     if response.status_code in [200, 202]:
         data = json.loads(response.text)
     else:
-        print("Error reaching the server.")
+        print("\033[91m Error reaching the server.\033[00m")
         print(response.text)
         exit(1)
     token = data['accessToken']
@@ -275,7 +356,7 @@ def get_request(url, username, password):
     if response.status_code == 200:
         data = json.loads(response.text)
     else:
-        print("Error reaching the server.")
+        print("\033[91m Error reaching the server. \033[00m")
         exit(1)
     return data
 
@@ -287,7 +368,7 @@ def post_request(payload, url, username, password):
         data = json.loads(response.text)
         return data
     else:
-        print("Error reaching the server.")
+        print("\033[91m Error reaching the server.\033[00m")
         print(response.text)
         exit(1)
 
@@ -299,7 +380,7 @@ def patch_request(payload, url, username, password):
         data = json.loads(response.text)
         return data
     else:
-        print("Error reaching the server.")
+        print("\033[91m Error reaching the server.\033[00m")
         print(response.text)
         exit(1)
 
@@ -307,15 +388,16 @@ def patch_request(payload, url, username, password):
 def get_poll_request(url, username, password):
     response = get_request(url, username, password)
     while response['executionStatus'] in ['In Progress', 'IN_PROGRESS', 'Pending']:
-        print('Validation is in progress...', end='\n\n')
+        print('\033[36m Validation is in progress... \033[00m', end='\n\n')
         time.sleep(10)
         response = get_request(url, username, password)
 
-    print('Validation ended with status %s' % response['resultStatus'])
     if response['executionStatus'] == 'COMPLETED' and response['resultStatus'] == 'SUCCEEDED':
+        print('\033[92m Validation ended with status %s \033[00m' % response['resultStatus'], end='\n\n')
         return
     else:
-        print('Validation failed')
+        print('\033[91m Validation ended with status %s' % response['resultStatus'], end='\n\n')
+        print('\033[91m Validation Failed \033[00m')
         print_response(response)
         exit(1)
 
@@ -325,9 +407,10 @@ def print_response(response):
         if s['resultStatus'] == 'FAILED':
             if 'description' and 'errorResponse' in s:
                 if 'errorCode' in s['errorResponse']:
-                    print('Validation is failed in task : "%s" with ErrorCode : "%s"' % (s['description'], s['errorResponse']['errorCode']))
+                    print(' Validation is failed in task : "%s" with ErrorCode : "%s"' % (
+                        s['description'], s['errorResponse']['errorCode']))
             if 'description' in s and 'errorResponse' not in s:
-                print('Validation is failed in task : "%s"' % s['description'])
+                print(' Validation is failed in task : "%s"' % s['description'])
             if 'errorResponse' in s:
                 if 'message' in s['errorResponse']:
                     print('message : %s' % s['errorResponse']['message'])
